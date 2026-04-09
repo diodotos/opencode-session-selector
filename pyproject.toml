@@ -1,0 +1,20 @@
+[project]
+name = "oc-session"
+version = "0.1.0"
+description = "Browse and reopen OpenCode sessions"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+oc-session = "oc_session.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+package = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/oc_session"]
