@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import socket
 import sqlite3
+import sys
 from collections import defaultdict
 from dataclasses import replace
 from pathlib import Path
@@ -18,7 +20,17 @@ def ensure_index(config: Config, force: bool = False) -> None:
 
 def build_index(config: Config) -> None:
     sources: list[dict[str, SessionData]] = []
-    sources.append(_load_local_sessions(config.db_path, config.max_chars, "local"))
+    local_identity = _local_identity()
+    merged_origin = _collect_session_origin(config.extra_data_roots)
+    sources.append(
+        _load_local_sessions(
+            config.db_path,
+            config.max_chars,
+            "local",
+            session_origin=merged_origin,
+            local_identity=local_identity,
+        )
+    )
     for root in config.extra_data_roots:
         db_path = root / "opencode.db"
         label = _source_for_data_root(root)
@@ -29,6 +41,7 @@ def build_index(config: Config) -> None:
                 config.max_chars,
                 label,
                 session_origin=session_origin,
+                local_identity=local_identity,
             )
         )
     merged = _merge_sources(sources)
@@ -256,6 +269,7 @@ def _load_local_sessions(
     max_chars: int,
     source: str,
     session_origin: dict[str, tuple[str, str]] | None = None,
+    local_identity: tuple[str, str] | None = None,
 ) -> dict[str, SessionData]:
     if not db_path.exists() or _is_lfs_pointer(db_path):
         return {}
@@ -269,7 +283,12 @@ def _load_local_sessions(
         session_origin = session_origin or {}
         for row in session_rows:
             session_id = row["id"]
-            session_source = _session_source(session_id, source, session_origin)
+            session_source = _session_source(
+                session_id,
+                source,
+                session_origin,
+                local_identity=local_identity,
+            )
             sessions[session_id] = SessionData(
                 session_id=session_id,
                 title=row["title"] or "",
@@ -377,6 +396,7 @@ def _session_source(
     session_id: str,
     fallback: str,
     session_origin: dict[str, tuple[str, str]],
+    local_identity: tuple[str, str] | None = None,
 ) -> str:
     origin = session_origin.get(session_id)
     if not origin:
@@ -384,9 +404,50 @@ def _session_source(
     host, platform = origin
     if not host:
         return fallback
+    if local_identity and _origin_matches_local(host, platform, local_identity):
+        return "local"
     if platform:
         return f"sync:{host}/{platform}"
     return f"sync:{host}"
+
+
+def _collect_session_origin(roots: Iterable[Path]) -> dict[str, tuple[str, str]]:
+    merged: dict[str, tuple[str, str]] = {}
+    for root in roots:
+        origins = _load_session_origin(root)
+        for session_id, origin in origins.items():
+            if session_id not in merged:
+                merged[session_id] = origin
+    return merged
+
+
+def _local_identity() -> tuple[str, str]:
+    host = socket.gethostname().strip()
+    return host, _platform_label()
+
+
+def _platform_label() -> str:
+    raw = sys.platform
+    if raw.startswith("win"):
+        return "windows"
+    if raw == "darwin":
+        return "mac"
+    return raw
+
+
+def _origin_matches_local(
+    host: str,
+    platform: str,
+    local_identity: tuple[str, str],
+) -> bool:
+    local_host, local_platform = local_identity
+    if not local_host:
+        return False
+    if host.strip().lower() != local_host.strip().lower():
+        return False
+    if platform and local_platform:
+        return platform.strip().lower() == local_platform.strip().lower()
+    return True
 
 
 def _read_hostname(meta_path: Path) -> str | None:
