@@ -1,6 +1,14 @@
 # oc-session
 
-CLI to explore and reopen OpenCode sessions with an fzf picker and tmux menus.
+A terminal-first session selector for OpenCode. It indexes local and synced sessions,
+lets you fuzzy-search with live previews, and opens the right context with safe
+open/fork prompts (tmux menu when available, plain prompt otherwise).
+
+![oc-session picker screenshot](assets/oc-session-picker.png)
+
+- Fast incremental search across sessions and titles
+- Preview recent content before you open
+- Clear local vs synced origin labeling (host/platform when available)
 
 ## Requirements
 
